@@ -1,0 +1,37 @@
+jira:
+  base_url: "https://surmountai.atlassian.net"
+  username: "haris@surmount.ai"
+  api_token: "${JIRA_API_TOKEN}"
+
+deepseek:
+  api_key: "${DEEPSEEK_API_KEY}"
+  model: "deepseek-chat"
+  max_tokens: 4000
+  temperature: 0.1
+
+claude:
+  cli_path: "${CLAUDE_CLI_PATH}"
+
+ssh_servers:
+  - host: "backend-1.company.com"
+    username: "logbot"
+    key_path: "/path/to/ssh/key"
+    port: 22
+  - host: "backend-2.company.com"
+    username: "logbot"
+    key_path: "/path/to/ssh/key"
+    port: 22
+
+database:
+  connection_string: "${DB_CONNECTION}"
+  query_timeout: 30
+  max_connections: 5
+
+codebase:
+  repo_path: "${CODEBASE_PATH}"
+  git_enabled: true
+
+logging:
+  level: "DEBUG"
+  file: "/var/log/cs-automation.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
