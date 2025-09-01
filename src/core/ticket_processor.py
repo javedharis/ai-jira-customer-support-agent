@@ -282,3 +282,29 @@ class TicketProcessor:
         except Exception as e:
             self.logger.error(f"Failed to transition {ticket_id} to {target_status}: {str(e)}")
             # Don't raise - ticket update can continue without status change
+    
+    async def add_comment_to_ticket(self, ticket_id: str, comment: str) -> None:
+        """Add a comment to the JIRA ticket"""
+        try:
+            self.jira.add_comment(ticket_id, comment)
+            self.logger.info(f"Added comment to {ticket_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to add comment to {ticket_id}: {str(e)}")
+            raise
+    
+    async def add_labels_to_ticket(self, ticket_id: str, labels: List[str]) -> None:
+        """Add labels to the JIRA ticket"""
+        try:
+            issue = self.jira.issue(ticket_id)
+            current_labels = issue.fields.labels or []
+            
+            # Add new labels that aren't already present
+            for label in labels:
+                if label not in current_labels:
+                    current_labels.append(label)
+            
+            issue.update(fields={'labels': current_labels})
+            self.logger.info(f"Added labels {labels} to {ticket_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to add labels to {ticket_id}: {str(e)}")
+            raise

@@ -16,7 +16,6 @@ from src.core.config import Config
 from src.core.ticket_processor import TicketProcessor
 from src.integrations.deepseek_client import DeepSeekClient
 from src.integrations.claude_executor import ClaudeExecutor
-from src.integrations.claude_log_processor import ClaudeLogProcessor
 from src.utils.file_data_storage import log_data_to_file
 from src.utils.logger import setup_logging
 import traceback
@@ -34,7 +33,6 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
         ticket_processor = TicketProcessor(config.jira)
         deepseek_client = DeepSeekClient(config.deepseek)
         claude_executor = ClaudeExecutor(config.claude)
-        claude_log_processor = ClaudeLogProcessor(config.deepseek)
         
         # Step 1: Fetch ticket data
         logger.info(f"✓ Fetching ticket data for {ticket_id}")
@@ -58,30 +56,34 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
         else:
             logger.warning(f"⚠ Claude analysis failed: {claude_result.error_message}")
         
-        # Step 4: Generate JIRA response from Claude logs (only if successful)
+        # Step 4: Send Claude analysis directly to JIRA (only if successful)
         if claude_result.success:
-            logger.info(f"✓ Generating JIRA response from Claude analysis")
+            logger.info(f"✓ Sending Claude analysis directly to JIRA")
 
+            # Read the Claude analysis logs
             log_file_path = claude_result.log_file_path
             with open(log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-            max_length = 50000  # Adjust based on DeepSeek limits
-            if len(content) > max_length:
-                jira_response = await claude_log_processor.generate_jira_response(
-                    ticket_data, issue_analysis, claude_result
-                )
-            else:
-                jira_response = content
+                claude_analysis = f.read()
             
-            # Step 5: Update JIRA ticket with the response
-            logger.info(f"✓ Updating JIRA ticket with response")
-            await ticket_processor.update_ticket_with_claude_response(ticket_id, jira_response)
+            # Format the message for JIRA
+            jira_message = f"""🤖 **Automated Analysis by Claude**
+
+{claude_analysis}
+
+---
+*This analysis was generated automatically by Claude AI.*"""
             
-            # Log the response details
-            logger.info(f"✓ Response type: {jira_response.resolution_type}")
-            logger.info(f"✓ Confidence: {jira_response.confidence_level}")
-            if jira_response.pr_urls:
-                logger.info(f"✓ PRs included: {len(jira_response.pr_urls)}")
+            # Step 5: Update JIRA ticket with the Claude analysis
+            logger.info(f"✓ Updating JIRA ticket with Claude analysis")
+            await ticket_processor.add_comment_to_ticket(ticket_id, jira_message)
+            
+            # Add appropriate labels
+            labels_to_add = ['claude-analyzed']
+            if claude_result.pr_urls:
+                labels_to_add.append('pr-created')
+                logger.info(f"✓ PRs created: {len(claude_result.pr_urls)}")
+            
+            await ticket_processor.add_labels_to_ticket(ticket_id, labels_to_add)
             
             logger.info(f"Successfully processed {ticket_id}")
             return True
