@@ -67,6 +67,7 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
             
             # Format the message for JIRA
             jira_message = f"""
+            ** This is an AI Generated Message **
             {claude_analysis}
             """
             
@@ -75,7 +76,7 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
             await ticket_processor.add_comment_to_ticket(ticket_id, jira_message)
             
             # Add appropriate labels
-            labels_to_add = ['analyzed']
+            labels_to_add = ['ai-analyzed']
             if claude_result.pr_urls:
                 labels_to_add.append('pr-created')
                 logger.info(f"✓ PRs created: {len(claude_result.pr_urls)}")
