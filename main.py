@@ -66,19 +66,16 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
                 claude_analysis = f.read()
             
             # Format the message for JIRA
-            jira_message = f"""🤖 **Automated Analysis by Claude**
-
-{claude_analysis}
-
----
-*This analysis was generated automatically by Claude AI.*"""
+            jira_message = f"""
+            {claude_analysis}
+            """
             
             # Step 5: Update JIRA ticket with the Claude analysis
             logger.info(f"✓ Updating JIRA ticket with Claude analysis")
             await ticket_processor.add_comment_to_ticket(ticket_id, jira_message)
             
             # Add appropriate labels
-            labels_to_add = ['claude-analyzed']
+            labels_to_add = ['analyzed']
             if claude_result.pr_urls:
                 labels_to_add.append('pr-created')
                 logger.info(f"✓ PRs created: {len(claude_result.pr_urls)}")
