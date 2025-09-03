@@ -43,7 +43,9 @@ class ClaudeExecutor:
 
         
         # Generate log file path
-        log_file_path = build_data_file_path(ticket_data.ticket_id, "claude_logs")
+        log_file_dir = build_data_file_path(ticket_data.ticket_id, "claude_logs")
+        log_file_dir.mkdir(parents=True, exist_ok=True)
+        log_file_path = log_file_dir / "claude_execution.log"
         
         # Prepare Claude prompt based on analysis
         claude_prompt = self._build_claude_prompt(ticket_data, issue_analysis)
@@ -154,6 +156,17 @@ FULL CONVERSATION HISTORY:
 ==========================
 {conversation_text}
 
+=== CRITICAL REQUIREMENT ===
+You MUST provide a comprehensive final analysis at the end of your response that includes:
+1. Summary of findings from your investigation
+2. Root cause analysis (if identified)
+3. Actions taken or recommended resolution steps
+4. Customer communication recommendations
+5. Any PRs created or code changes made
+6. Follow-up actions needed
+
+This final analysis section is mandatory and must be clearly marked with "=== FINAL ANALYSIS ===" header.
+
 Please proceed with your analysis and resolution according to the instructions above.
 """
         
@@ -163,11 +176,13 @@ Please proceed with your analysis and resolution according to the instructions a
         """Execute Claude CLI command with the given prompt"""
         
         try:
-            # Prepare Claude command with --dangerously-skip-permissions and --print flags
+            # Prepare Claude command with --dangerously-skip-permissions, --print, and --model flags
             cmd = [
                 self.config.cli_path,
                 "--dangerously-skip-permissions",
-                "--print"
+                "--print",
+                "--model",
+                "claude-4"
             ]
             
             self.logger.info(f"Executing Claude command: {' '.join(cmd)}")
@@ -187,6 +202,12 @@ Please proceed with your analysis and resolution according to the instructions a
             # Write all output to log file
             with open(log_file_path, 'wb') as f:
                 f.write(stdout)
+            
+            # Check if we got meaningful output
+            if not stdout or len(stdout.decode('utf-8', errors='ignore').strip()) < 50:
+                error_msg = "No meaningful output from Claude execution - marking as failed"
+                self.logger.warning(error_msg)
+                return -1, error_msg
             
             self.logger.info(f"Claude execution completed. Logs saved to: {log_file_path}")
             
