@@ -10,7 +10,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from src.core.config import Config
 from src.core.ticket_processor import TicketProcessor
@@ -18,12 +18,20 @@ from src.integrations.deepseek_client import DeepSeekClient
 from src.integrations.claude_executor import ClaudeExecutor
 from src.utils.file_data_storage import log_data_to_file
 from src.utils.logger import setup_logging
+from src.database import TicketTracker
 import traceback
 
 
 
-async def process_ticket(ticket_id: str, config: Config) -> bool:
-    """Process a single JIRA ticket using Claude Code integration"""
+async def process_ticket(ticket_id: str, config: Config, user: str = 'default', db_tracker: Optional[TicketTracker] = None) -> bool:
+    """Process a single JIRA ticket using Claude Code integration
+    
+    Args:
+        ticket_id: JIRA ticket ID to process
+        config: Configuration object
+        user: User processing the ticket
+        db_tracker: Optional database tracker for logging
+    """
     logger = logging.getLogger(__name__)
     
     try:
@@ -57,6 +65,9 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
             logger.warning(f"⚠ Claude analysis failed: {claude_result.error_message}")
         
         # Step 4: Send Claude analysis directly to JIRA (only if successful)
+        jira_comment_added = False
+        labels_added = []
+        
         if claude_result.success:
             logger.info(f"✓ Sending Claude analysis directly to JIRA")
 
@@ -74,6 +85,7 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
             # Step 5: Update JIRA ticket with the Claude analysis
             logger.info(f"✓ Updating JIRA ticket with Claude analysis")
             await ticket_processor.add_comment_to_ticket(ticket_id, jira_message)
+            jira_comment_added = True
             
             # Add appropriate labels
             labels_to_add = ['ai-analyzed']
@@ -83,15 +95,49 @@ async def process_ticket(ticket_id: str, config: Config) -> bool:
             
             await ticket_processor.add_labels_to_ticket(ticket_id, labels_to_add)
             
+            # Log to database if tracker is provided
+            if db_tracker:
+                db_tracker.log_ticket_processing(
+                    ticket_id=ticket_id,
+                    user=user,
+                    success=True,
+                    execution_time=claude_result.execution_time_seconds,
+                    pr_urls=claude_result.pr_urls,
+                    deepseek_analysis=str(issue_analysis),
+                    claude_analysis_path=claude_result.log_file_path,
+                    jira_comment_added=jira_comment_added,
+                    labels_added=labels_to_add
+                )
+            
             logger.info(f"Successfully processed {ticket_id}")
             return True
         else:
+            # Log failure to database if tracker is provided
+            if db_tracker:
+                db_tracker.log_ticket_processing(
+                    ticket_id=ticket_id,
+                    user=user,
+                    success=False,
+                    error_message=claude_result.error_message,
+                    deepseek_analysis=str(issue_analysis) if 'issue_analysis' in locals() else None
+                )
+            
             logger.error(f"Claude analysis failed for {ticket_id}, skipping JIRA update")
             return False
         
     except Exception as e:
         logger.error(f"Error processing {ticket_id}: {str(e)}")
         logger.error(traceback.format_exc())
+        
+        # Log error to database if tracker is provided
+        if db_tracker:
+            db_tracker.log_ticket_processing(
+                ticket_id=ticket_id,
+                user=user,
+                success=False,
+                error_message=str(e)
+            )
+        
         return False
 
 
@@ -121,6 +167,12 @@ async def main():
         action='store_true',
         help='Enable verbose logging'
     )
+    parser.add_argument(
+        '--user',
+        type=str,
+        default=None,
+        help='User whose JIRA token to use (e.g., "yassa"). Default uses standard JIRA token'
+    )
     
     args = parser.parse_args()
     
@@ -132,19 +184,31 @@ async def main():
     
     # Load configuration
     try:
-        config = Config.load(args.config)
+        config = Config.load(args.config, user=args.user)
         if args.dry_run:
             config.dry_run = True
+        
+        # Log which user's token is being used
+        if args.user and args.user.lower() == 'yassa':
+            logger.info(f"Using Yassa's JIRA token for authentication")
+        else:
+            logger.info(f"Using default JIRA token for authentication")
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         sys.exit(1)
+    
+    # Initialize database tracker
+    db_tracker = TicketTracker()
+    
+    # Determine user for database logging
+    db_user = args.user.lower() if args.user else 'default'
     
     # Process tickets
     success_count = 0
     total_count = len(args.ticket_ids)
     
     for ticket_id in args.ticket_ids:
-        if await process_ticket(ticket_id, config):
+        if await process_ticket(ticket_id, config, user=db_user, db_tracker=db_tracker):
             success_count += 1
     
     # Report results

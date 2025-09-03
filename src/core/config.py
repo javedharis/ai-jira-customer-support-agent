@@ -70,8 +70,13 @@ class Config:
     dry_run: bool = False
 
     @classmethod
-    def load(cls, config_path: str) -> 'Config':
-        """Load configuration from YAML file with environment variable substitution"""
+    def load(cls, config_path: str, user: Optional[str] = None) -> 'Config':
+        """Load configuration from YAML file with environment variable substitution
+        
+        Args:
+            config_path: Path to the configuration file
+            user: Optional user name for selecting specific JIRA token (e.g., 'yassa')
+        """
         # Load .env file if it exists
         env_file = Path('.env')
         if env_file.exists():
@@ -87,6 +92,17 @@ class Config:
         
         # Substitute environment variables
         config_data = cls._substitute_env_vars(raw_config)
+        
+        # Handle user-specific JIRA token
+        if user and user.lower() == 'yassa':
+            # Use Yassa's JIRA token
+            yassa_token = os.getenv('YASSA_JIRA_API_TOKEN')
+            if yassa_token:
+                config_data['jira']['api_token'] = yassa_token
+                config_data['jira']['username'] = "yassa@surmount.ai"
+            else:
+                raise ValueError("YASSA_JIRA_API_TOKEN not found in environment variables")
+        # For default or 'haris' user, use the default token (already loaded)
         
         # Parse configuration sections
         jira_config = JiraConfig(**config_data['jira'])
