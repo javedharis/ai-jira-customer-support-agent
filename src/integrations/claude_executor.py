@@ -182,7 +182,7 @@ Please proceed with your analysis and resolution according to the instructions a
                 "--dangerously-skip-permissions",
                 "--print",
                 "--model",
-                "claude-4"
+                "sonnet"
             ]
             
             self.logger.info(f"Executing Claude command: {' '.join(cmd)}")
